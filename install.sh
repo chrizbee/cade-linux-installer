@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 export STEAMAPPS="$HOME/.steam/steam/steamapps"
 export STEAM_COMPAT_DATA_PATH="$STEAMAPPS/compatdata/813780"
-export STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steampath"
+export STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steam"
 export WINEPREFIX="$STEAMAPPS/compatdata/813780/pfx"
 
 if [[ ! -d $HOME/.local/bin ]]; then
@@ -13,9 +13,9 @@ fi
 # Posted by tripleee
 # Retrieved 2026-06-06, License - CC BY-SA 3.0
 
-case :$PATH: in *:$HOME/.local/bin:*) # notice colons around the value
-  ;;                                  # do nothing, it's there
-*)
+case :$PATH: in (*:$HOME/.local/bin:*)
+  ;;
+(*)
   echo "$HOME/.local/bin not in \$PATH. Please ensure it is added to \$PATH before running this script." >&2
   exit -2
   ;;
@@ -34,9 +34,10 @@ fi
 
 echo "Downloading installer"
 
-curl -s --follow https://captureage.com/api/cade/download/prod/latest-setup --output CaptureAgeSetup.exe
+curl -s -L https://captureage.com/api/cade/download/prod/latest-setup --output CaptureAgeSetup.exe
 
-proton="$(head -n 2 $STEAM_COMPAT_DATA_PATH/config_info | tail -n 1 | xargs dirname | xargs dirname | xargs dirname)/proton"
+proton_path="$(head -n 2 "$STEAM_COMPAT_DATA_PATH/config_info" | tail -n 1)"
+proton="$(dirname "$(dirname "$(dirname "$proton_path")")")/proton"
 if [[ ! -x "$proton" ]]; then
   echo "Could not detect proton. Tried to use: $proton"
 fi
@@ -65,7 +66,9 @@ export STEAMAPPS="$HOME/.steam/steam/steamapps"
 export STEAM_COMPAT_DATA_PATH="$STEAMAPPS/compatdata/813780"
 export STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steam"
 export WINEPREFIX="$STEAMAPPS/compatdata/813780/pfx"
-proton="$(head -n 2 $STEAM_COMPAT_DATA_PATH/config_info | tail -n 1 | xargs dirname | xargs dirname | xargs dirname)/proton"
+
+proton_path="$(head -n 2 "$STEAM_COMPAT_DATA_PATH/config_info" | tail -n 1)"
+proton="$(dirname "$(dirname "$(dirname "$proton_path")")")/proton"
 
 "$proton" run "$STEAMAPPS/common/AoE2DE/Tools_Builds/AOEURLHelper.exe" "$@"
 EOF
@@ -77,9 +80,9 @@ if [[ -e $HOME/.local/share/applications/AoE2UrlHelper.desktop ]]; then
 else
   echo "Installation complete, adding AoE2 URL Handler"
   cat >$HOME/.local/share/applications/AoE2UrlHelper.desktop <<EOF
-\[Desktop Entry\]
+[Desktop Entry]
 Name=AoE2 URL Opener
-Comment=Play this game on Steam \(Open URL\)
+Comment=Play this game on Steam (Open URL)
 Exec=$HOME/.local/bin/aoe2url %u
 Icon=steam_icon_813780
 Terminal=false
@@ -135,7 +138,9 @@ export STEAM_COMPAT_DATA_PATH="$STEAMAPPS/compatdata/813780"
 export STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steam"
 export WINEPREFIX="$STEAMAPPS/compatdata/813780/pfx"
 export OBS_VKCAPTURE=1
-proton="$(head -n 2 $STEAM_COMPAT_DATA_PATH/config_info | tail -n 1 | xargs dirname | xargs dirname | xargs dirname)/proton"
+
+proton_path="$(head -n 2 "$STEAM_COMPAT_DATA_PATH/config_info" | tail -n 1)"
+proton="$(dirname "$(dirname "$(dirname "$proton_path")")")/proton"
 
 # run capture age
 EOF
