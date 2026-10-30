@@ -3,6 +3,8 @@ export STEAMAPPS="$HOME/.steam/steam/steamapps"
 export STEAM_COMPAT_DATA_PATH="$STEAMAPPS/compatdata/813780"
 export STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steam"
 export WINEPREFIX="$STEAMAPPS/compatdata/813780/pfx"
+# Xalia (Proton's accessibility helper) floods the output with stack traces
+export PROTON_USE_XALIA=0
 
 if [[ ! -d $HOME/.local/bin ]]; then
   echo "Missing $HOME/.local/bin directory. It needs to be created and added to the \$PATH."
@@ -40,6 +42,15 @@ proton_path="$(head -n 2 "$STEAM_COMPAT_DATA_PATH/config_info" | tail -n 1)"
 proton="$(dirname "$(dirname "$(dirname "$proton_path")")")/proton"
 if [[ ! -x "$proton" ]]; then
   echo "Could not detect proton. Tried to use: $proton"
+  exit 1
+fi
+wineserver="$(dirname "$proton")/files/bin/wineserver"
+
+# A running game keeps its own wineserver with the registry in memory and
+# overwrites the .reg files on exit, discarding everything written here.
+if pgrep -f 'AoE2DE_s\.exe' >/dev/null; then
+  echo "Age of Empires 2 is running. Please close it before running this installer." >&2
+  exit 1
 fi
 
 #install capture age (only needed once). You need to manually copy the CaptureAgeSetup.exe in this location.
@@ -119,16 +130,38 @@ register_captureage() {
   done
 }
 
+# CaptureAge defaults to C:\Program Files (x86)\Steam\steamapps\common\AoE2DE,
+# which does not exist in the Proton prefix, and crashes when spectating.
+# Point it to the game directory the game itself registered.
+set_game_directory() {
+  local state="$WINEPREFIX/drive_c/users/steamuser/AppData/Roaming/CaptureAge/persistedState_prod.json"
+  local game_dir_win tmp_state
+
+  game_dir_win="$(sed -n 's/^"Install Location"="\(.*\)"\r\?$/\1/p' "$WINEPREFIX/user.reg" | head -n 1 | sed 's/\\\\/\\/g')"
+  if [[ -z "$game_dir_win" ]]; then
+    echo "Could not detect the AoE2 game directory. Start Age of Empires 2 once and rerun this installer." >&2
+    return
+  fi
+  if [[ ! -f "$state" ]]; then
+    echo "CaptureAge settings not found. Start CaptureAge once and rerun this installer to set the game directory." >&2
+    return
+  fi
+  echo "Setting CaptureAge game directory to $game_dir_win"
+  tmp_state="$(mktemp)"
+  jq --arg dir "$game_dir_win" '.lastUsedGameDirectory = $dir' "$state" >"$tmp_state" && mv "$tmp_state" "$state"
+}
+
+if [[ -d "$STEAM_COMPAT_DATA_PATH/pfx/drive_c/users/steamuser/AppData/Local/Programs/CADE" ]]; then
+  export CAPTUREAGE_DIR_WIN='C:\users\steamuser\AppData\Local\Programs\CADE'
+else
+  export CAPTUREAGE_DIR_WIN='C:\users\steamuser\AppData\Local\Programs\CaptureAge'
+fi
+echo $CAPTUREAGE_DIR_WIN
+
 if [[ -e $HOME/.local/bin/captureage ]]; then
   echo "captureage launcher script already exists, skipping..."
 else
   echo "Adding CaptureAge launcher script"
-  if [[ -d "$STEAM_COMPAT_DATA_PATH/pfx/drive_c/users/steamuser/AppData/Local/Programs/CADE" ]]; then
-    export CAPTUREAGE_DIR_WIN='C:\users\steamuser\AppData\Local\Programs\CADE'
-  else
-    export CAPTUREAGE_DIR_WIN='C:\users\steamuser\AppData\Local\Programs\CaptureAge'
-  fi
-  echo $CAPTUREAGE_DIR_WIN
 
   cat >$HOME/.local/bin/captureage <<'EOF'
 #!/usr/bin/env bash
@@ -146,9 +179,12 @@ proton="$(dirname "$(dirname "$(dirname "$proton_path")")")/proton"
 EOF
   echo "\"\$proton\" run \"$CAPTUREAGE_DIR_WIN\\CaptureAge.exe\"" >>$HOME/.local/bin/captureage
   chmod u+x $HOME/.local/bin/captureage
-
-  echo "Adding registry entries to ensure CaptureAge can be launch from withing AoE2"
-
-  register_captureage
-
 fi
+
+# Always (re-)register, so rerunning the installer repairs missing entries
+echo "Adding registry entries to ensure CaptureAge can be launched from within AoE2"
+register_captureage
+# Wait for the wineserver to exit so the registry is flushed to disk
+WINEPREFIX="$WINEPREFIX" "$wineserver" -w
+
+set_game_directory
